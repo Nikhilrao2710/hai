@@ -1,0 +1,129 @@
+Ansible Installation & Configuration:
+****************************************
+
+1. Prerequisites
+An AWS EC2 instance for Ansible-Server & Ansible-Host(s) machines
+
+************************************
+Installation steps:
+************************************
+2. Add a EPEL (Extra Packages for Enterprise Linux)third party repository to get packages for Ansible(Master)
+	rpm -Uvh https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+
+	[OR]
+	wget https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+	yum install epel-release-latest-7.noarch.rpm
+	
+	Install Ansible: yum install ansible -y 
+
+	Check Ansible version: ansible --version
+
+************************************
+Configuration steps:
+************************************
+
+3. Create a new user for ansible administration & grant admin access to user (Master and Slave)
+	useradd ansadmin
+	passwd ansadmin
+	
+4. # below command addes ansadmin to sudoers file. But strongly recommended to use "visudo" command(Master and Slave). 
+	root@ip> visudo
+	now add the below statement under: #Read drop-in files...
+	ansadmin        ALL=(ALL)       NOPASSWD: ALL
+
+5. Using keybased authentication is advised. If you are still at learning stage use password based authentication (Master & Slave)
+	root@ip>cd /etc/ssh
+	>ls
+	>vi sshd_config
+		PasswordAuthentication yes
+		#PasswordAuthentication no
+	[OR]
+	# sed command replaces "PasswordAuthentication no to yes" without editing file 
+	sed -ie 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+6. Now, restart Master & Slave EC2 machines: (Master & Slave)
+	root@ip>service sshd restart
+
+
+7. Open a new session and Login as a "ansadmin" user on Master machine and generate ssh key (Master)
+	ansadmin@ip>ssh-keygen  - On Master, the key will be stored in /home/ansadmin/.ssh/  [OR] /root/.ssh/id_rsa.pub
+	ansadmin@ip>ls -la
+	
+8. check the private ip of ansible-host(Slave) machine with the command:> ifconfig -a
+
+9. Copy keys onto all ansible client nodes (Master)
+	ansadmin@/home/ansadmin/.ssh>ssh-copy-id <target-host-privateip-server>
+	
+	/*The above command will copy the key to host machine & gives message: No:of keys added in this LOCATTION(/home/ansadmin/.ssh)*/
+
+10. To check the connection from Master to Slave(This should not ask any password).[Master]
+	ansadmin@ip/home/ansadmin/.ssh>ssh <target-host-privateip-server> /*This will connect to host machine without asking any password*/
+	ansadmin@ip>exit /*This will exit from hostmachine and go back to master machine prompt */
+
+***********************************************************
+Testing the connection with host/client machine(s)
+***********************************************************
+11. Need to add client/host/target machines PrivateIP in the host file of the Master machine(Master)
+	ansadmin@ip>sudo vi /etc/ansible/hosts   /* Remove all the default code in the hosts file and add below */
+		[all_hosts]
+		<target-host-privateip-server>
+
+12. Run ansible command as ansadmin user it should be successful (Master)
+	ansadmin@ip>ansible all -m ping
+	eg: ansible all -m ping 'all_hosts'
+
+	
+******************************************************************
+Ansible Commands: Copy a file from Master machine to Host Machine
+******************************************************************
+13. Create a sample html file with some text message(Master)
+	ansadmin@ip>cd /home/ansadmin/
+	ansadmin@ip>cat > hello.html
+	<h1>Hello...Welcome to Ansible</h1>
+
+	>ls
+14. Now, Run below command to copy the file from Master to Host machine(Master)
+	ansadmin@ip>ansible all -m copy -a "src=/home/ansadmin/hello.html dest=/home/ansadmin/"
+
+***********************************************************
+Writing a Playbook and Running on a host/client machine(s)
+***********************************************************
+19. To see list of host nodes : (Master)
+	ansadmin@ip>ansible --list-host all
+
+20. update your inventory/host file with host names(Master)
+	ansadmin@ip>sudo vi /etc/ansible/hosts
+		[all_hosts]
+		<target-host-privateip-server>
+
+21. create a playbookfile with .yml and the below code(Master):
+	ansadmin@ip>sudo touch apache-playbook.yml
+
+	>sudo vi apache-playbook.yml
+---
+- name: install apache
+  hosts: all_hosts
+  become: true
+  tasks:
+    - name: Install httpd
+      yum:
+        name: httpd
+        state: latest
+
+    - name: create content
+      copy:
+        content: "Welcome to Ansible HTTPD"
+        dest: /var/www/html/index.html
+
+    - name: start and enable http server
+      service:
+        name: httpd
+        state: started
+        enabled: true
+
+22.	Execute the playbook [Master]
+	ansadmin@ip>ansible-playbook -s apache-playbook.yml
+
+23. Now, check the Host machine/node for "httpd" installed in the path /etc/httpd/
+24. Launch browser and type the Hostnode IP to launch the webpage.
+
